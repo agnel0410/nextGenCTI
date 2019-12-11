@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  nextgenCTI
+
+  Sample SAM Template for nextgenCTI
+  
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 60
+
+Resources:
+  kvsStreamFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: ./kvs-stream/
+      Handler: app.main
+      Runtime: nodejs12.x
+      Policies:
+        - AmazonKinesisVideoStreamsFullAccess
+        - AmazonS3FullAccess
+        
+  kvsTriggerFunctionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        -
+          PolicyName: kvs-streaming-trigger-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "lambda:InvokeFunction"
+                  - "lambda:InvokeAsync"
+                Resource:
+                  - !GetAtt kvsStreamFunction.Arn
+
+  kvsTriggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./kvs-trigger/
+      Handler: app.main
+      Runtime: nodejs12.x
+      Role: !GetAtt kvsTriggerFunctionRole.Arn
+      Environment:
+        Variables:
+          KvsStreamFunction: !Ref kvsStreamFunction
+          METRICS: true
+
+  FallbackFulfilmentFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: ./fallback-fulfilment/
+      Handler: app.main
+      Runtime: nodejs12.x
+
+Outputs:
+  kvsStreamFunction:
+    Description: "kvsStreamFunction ARN"
+    Value: !GetAtt kvsStreamFunction.Arn
+  kvsStreamFunctionIamRole:
+    Description: "Implicit IAM Role created for kvsStreamFunction"
+    Value: !GetAtt kvsStreamFunctionRole.Arn
+  kvsTriggerFunction:
+    Description: "kvsTriggerFunction ARN"
+    Value: !GetAtt kvsTriggerFunction.Arn
+  kvsTriggerFunctionIamRole:
+    Description: "Implicit IAM Role created for kvsTriggerFunction"
+    Value: !GetAtt kvsTriggerFunctionRole.Arn
+  FallbackFulfilmentFunction:
+    Description: "Hello World Lambda Function ARN"
+    Value: !GetAtt FallbackFulfilmentFunction.Arn
+  FallbackFulfilmentFunctionIamRole:
+    Description: "Implicit IAM Role created for Hello World function"
+    Value: !GetAtt FallbackFulfilmentFunctionRole.Arn
+
+
